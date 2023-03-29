@@ -192,35 +192,14 @@ lall =
                names_to = "Treatment",
                values_to = "Abundance")
 
-
-lall %>% 
-  ggplot(aes(x = Abundance,
-             color = state, fill = state))+
-  geom_histogram(alpha = 0.7, binwidth = 0.01)+
-  theme_bw()+
-    facet_wrap(~Treatment, scales = 'free_y')+
-  geom_vline(xintercept = 200, linetype = "dashed")
-
-
-lall %>% 
-  ggplot(aes(x = Retention_time,
-             color = state, fill = state))+
-  geom_histogram(alpha = 0.7, binwidth = 0.1)+
-  theme_bw()+
-    facet_wrap(~Treatment, scales = 'free_y')
-
-lall %>% 
-  ggplot(aes(x = state, 
-             y = Retention_time,
-             color = state))+
-  geom_violin()+
-  geom_boxplot()+
-  theme_bw()+
-  facet_wrap(.~Treatment)
-
 ```
 
+I removed the violin plots because I found a way to filter more stringently the peptides per condition and state.
 
+
+## Filtering peptides 
+
+Filtering peptides to keep only the peptides appearing in the two conditions and oxidated in H2O2 treatment and unoxidated in the ctrl treatment.
 
 ```{r}
 
