@@ -1,0 +1,32 @@
+{
+    "id": "DF67B91B",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1679497434898.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "expression": "targetpep",
+        "caption": "targetpep",
+        "totalObservations": 1589,
+        "displayedObservations": 1589,
+        "variables": 11,
+        "cacheKey": "8AF3A406",
+        "object": "targetpep",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=targetpep&cache_key=8AF3A406&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 0,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1679497434898,
+    "read_only": false,
+    "read_only_alternatives": []
+}

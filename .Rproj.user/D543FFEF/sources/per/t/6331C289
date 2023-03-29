@@ -1,0 +1,26 @@
+{
+    "id": "6331C289",
+    "path": "/Volumes/BVDE_MHY/R/Sophie/BVDE929/report.Rmd",
+    "project_path": "report.Rmd",
+    "type": "r_markdown",
+    "hash": "2192911155",
+    "contents": "",
+    "dirty": false,
+    "created": 1679491352091.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "chunk_output_type": "console",
+        "cursorPosition": "267,19",
+        "scrollLine": "256",
+        "docOutlineVisible": "1"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1679499677,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1679499677043,
+    "read_only": false,
+    "read_only_alternatives": []
+}

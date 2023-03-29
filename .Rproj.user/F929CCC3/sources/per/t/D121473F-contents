@@ -1,0 +1,343 @@
+
+library("tidyverse")
+library("ggplot2")
+library("QFeatures")
+library("limma")
+library("msdata")
+library("plotly")
+
+PHOS749_1 <- read_tsv("./data/PHOS749_TiO2_all_PeptideGroups.txt")
+#grandp <- read_tsv("./data/PHOS749_TiO2_all_PtmRS_Proteins.txt")
+#peptide_groups <- read_tsv("./data/PHOS749_TiO2_all_PtmRS_peptide_groups_PeptideGroups.txt")
+
+names(PHOS749_1) 
+
+PHOS749_1 <- as.data.frame(PHOS749_1)
+
+# Re organize the data
+
+PHOS749sh <- PHOS749_1[,c(4,5,10,11:14,45:58,74:87)]
+coln <- c("Scr_1","Scr_2","Scr_3","KD_1","KD_2","KD_3",
+          "KD_SBI_1","KD_SBI_2","KD_SBI_3","WT_1","WT_2","WT_3","WT_SBI_1",
+          "WT_SBI_2")
+colnames(PHOS749sh)[8:21] <- coln
+names(PHOS749sh)
+
+
+# Filter to keep only phospho modif 
+
+PHOS749 <- 
+PHOS749sh %>% 
+  filter(grepl("Phospho", PHOS749sh$Modifications)) # 7035 obs
+
+# # Filter to keep proteins that appear in >1 replicates ("Not Found")
+# # in the WT the entrezid 	54802 should be removed
+# 
+# # scramble
+# PHOS749 <- 
+# PHOS749 %>% 
+#   filter(!sapply(PHOS749[22:24], grepl, pattern = "Not.*{2,}")) 
+# # 6107 obsv
+# 
+# # WT
+# PHOS749 <- 
+#   PHOS749 %>% 
+#   filter(!sapply(PHOS749[25:27], grepl, pattern = "Not.*{2,}")) 
+# #5873 obsv
+# 
+# # KD
+# PHOS749 <- 
+#   PHOS749 %>% 
+#   filter(!sapply(PHOS749[28:30], grepl, pattern = "Not.*{2,}")) 
+# # 5714 obsv
+# 
+# # KD SBI
+# PHOS749 <- 
+#   PHOS749 %>% 
+#   filter(!sapply(PHOS749[31:33], grepl, pattern = "Not.*{2,}")) 
+# #5490 obsv
+# 
+# # WT SBI
+# PHOS749 <- 
+#   PHOS749 %>% 
+#   filter(!sapply(PHOS749[34:35], grepl, pattern = "Not.*{2,}")) 
+# # 5370 obsv
+# 
+# table(PHOS749$`Found in Sample in S12 F12 Sample siR A1 SBI 3`)
+# 
+# # a fonctionné, il reste des Not Found quand ils aparaissaient une fois
+
+
+# Treat missing values
+# ici je choisis de garder un max de peptides
+table(is.na(PHOS749[8:21])) 
+
+# na.omit(PHOS749[7:20]) # enlève 105 values
+# PHOS749 <- PHOS749%>% filterNA(!is.na(PHOS749[7:20]))
+
+# Filter PSMs=< 1
+
+PHOS749 <- 
+PHOS749 %>% 
+  filter(`Number of PSMs`>1)
+# enlève 350 observations
+
+# Create a SummarizedExperiment object
+
+se749 <- readSummarizedExperiment(PHOS749, ecol = c(8:21))
+colnames(se749)
+se749$condition <- sub("_[1-9]", "", colnames(se749))
+colData(se749)
+colData(se749)$replicates <- as.character(c(rep(1:3,4),1:2))
+
+head(assay(se749))
+head(rowData(se749))
+
+# look at NAs
+
+table(is.na(as.data.frame(assay(se749))))
+se749 <- zeroIsNA(se749)
+nNA(se749) # on est à <2 % de valeurs manquantes par sample
+
+########### Normalisation ##########
+
+library(QFeatures)
+library(preprocessCore)
+
+# Create a QFeatures object
+
+qf749 <- QFeatures(list(proteins = se749))
+colData(qf749) <- colData(se749)
+
+boxplot(assay(qf749))
+limma::plotDensities(assay(qf749))
+
+# il faut logtransform
+
+qf749 <- logTransform(qf749, i = "proteins",
+                       name = "log_proteins")
+
+qf749 <- normalize(qf749, i = "log_proteins",
+                   name = "lognorm_proteins", method = "center.median")
+
+# Check the distributions
+
+par(mfrow=c(1,2))
+limma::plotDensities(assay(qf749[["proteins"]]))
+limma::plotDensities(assay(qf749[["lognorm_proteins"]]))
+boxplot(assay(qf749))
+boxplot(assay(qf749[["lognorm_proteins"]]))
+boxplot(assay(qf749[[2]]))
+
+library("factoextra")
+library("patchwork")
+
+
+# PCAs
+
+par(mfrow=c(1,1))
+
+temp <-
+  qf749[["lognorm_proteins"]] %>%
+  filterNA() %>%
+  assay() %>%
+  t()
+
+pca2 <- 
+prcomp(temp[, apply(temp, 2, var) != 0],scale = TRUE, center = TRUE) %>%
+  fviz_pca_ind(habillage = qf749$condition)
+
+
+print(pca2)
+ggsave(filename = "./figures/pca_cond.jpeg",plot = last_plot())
+
+## On voit une bonne séparation des types cellulaires et on peut
+# distinguer les conditions des traitées mais pas énormément non plus
+# je pense écarter le KD_3 pcq trop différent de son cluster
+# c'est aussi celui qui contenait la valeur aberrante
+
+qf749 <- QFeatures(list(proteins = se749[,-6]))
+colData(qf749) <- colData(se749[,-6])
+
+qf749 <- logTransform(qf749, i = "proteins",
+                      name = "log_proteins")
+
+qf749 <- normalize(qf749, i = "log_proteins",
+                   name = "lognorm_proteins", method = "center.median")
+
+# PCAs
+
+par(mfrow=c(1,1))
+
+temp <-
+  qf749[["lognorm_proteins"]] %>%
+  filterNA() %>%
+  assay() %>%
+  t()
+
+pca3 <- 
+  prcomp(temp[, apply(temp, 2, var) != 0],scale = TRUE, center = TRUE) %>%
+  fviz_pca_ind(habillage = qf749$condition)
+
+print(pca3)
+ggsave(filename = "./figures/pca_cond_noKD3.jpeg",plot = last_plot())
+
+
+## Satistical test (Bayes fit)
+
+prots <- qf749[[3]]
+colData(prots) <- colData(qf749)
+head(colData(prots))
+
+library("limma")
+
+design <- model.matrix(~ -1+ prots$condition)
+colnames(design) <- c("KD","KD_SBI","Scr","WT","WT_SBI")
+contrast.matrix <- makeContrasts(
+  WT_WTSBI = WT - WT_SBI,
+  WT_Scr = WT - Scr,
+  WT_KD = WT - KD,
+  Scr_KD = Scr-KD,
+  KD_KDSBI = KD-KD_SBI,
+  levels = design
+)
+
+fit <- lmFit(assay(prots), design)
+fit.cont <- contrasts.fit(fit, contrast.matrix)
+fit.eb   <- eBayes(fit.cont)
+
+head(fit.eb)
+
+## to annotate later
+
+ann <- as.data.frame(PHOS749$`Master Protein Descriptions`)
+colnames(ann)[1] <- "Description"
+ann$Accession <- PHOS749$`Master Protein Accessions`
+ann$Ensembl <- PHOS749$`Ensembl Gene ID`
+ann$peptide <- c(1:dim(PHOS749)[1])
+
+# WT WT SBI
+
+resWT_WTSBI <-
+  topTable(fit.eb, coef = "WT_WTSBI", number = Inf) %>%
+  rownames_to_column("peptide") %>%
+  as_tibble()
+
+vpWT_WTSBI <-
+  resWT_WTSBI %>%
+  ggplot(aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1)) +
+  geom_hline(yintercept = -log10(0.1)) 
+
+ggplotly(vpWT_WTSBI)
+
+dwtsbi <- resWT_WTSBI %>% filter(resWT_WTSBI$adj.P.Val<0.1)
+res <- dwtsbi$peptide
+cdatawtsbi <- rowData(qf749[[3]])[res,]
+cdatawtsbi$Master.Protein.Accessions
+
+dwtsbi$peptide <- as.numeric(dwtsbi$peptide)
+dwtsbi <- left_join(dwtsbi,ann, by = c("peptide"))
+
+
+# WT Scr
+
+resWT_Scr <-
+  topTable(fit.eb, coef = "WT_Scr", number = Inf) %>%
+  rownames_to_column("peptide") %>%
+  as_tibble()
+
+vpWT_Scr <-
+  resWT_Scr %>%
+  ggplot(aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1)) +
+  geom_hline(yintercept = -log10(0.1)) +
+  scale_color_manual(values = c("black","red"))
+
+ggplotly(vpWT_Scr)
+
+dwtscr <- resWT_Scr %>% filter(resWT_Scr$adj.P.Val<0.1)
+res <- dwtscr$peptide
+cdatawtscr <- rowData(qf749[[3]])[res,]
+cdatawtscr$Master.Protein.Accessions
+
+dwtscr$peptide <- as.numeric(dwtscr$peptide)
+dwtscr <- left_join(dwtscr,ann, by = c("peptide"))
+
+
+# WT KD
+
+resWT_KD <-
+  topTable(fit.eb, coef = "WT_KD", number = Inf) %>%
+  rownames_to_column("peptide") %>%
+  as_tibble() 
+
+vpWT_KD <-
+  resWT_KD %>%
+  ggplot(aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1)) +
+  geom_hline(yintercept = -log10(0.1)) 
+
+ggplotly(vpWT_KD)
+
+dwtkd <- resWT_KD %>% filter(resWT_KD$adj.P.Val<0.1)
+res <- dwtkd$peptide
+cdatawtkd <- rowData(qf749[[3]])[res,]
+cdatawtkd$Master.Protein.Accessions
+dwtkd$Accession <- cdatawtkd$Master.Protein.Accessions
+dwtkd$Modif <- cdatawtkd$Modifications.in.Master.Proteins
+
+dwtkd$peptide <- as.numeric(dwtkd$peptide)
+dwtkd <- left_join(dwtkd,ann, by = c("peptide"))
+
+
+# Scr KD
+
+resScr_KD <-
+  topTable(fit.eb, coef = "Scr_KD", number = Inf) %>%
+  rownames_to_column("peptide") %>%
+  as_tibble() %>%
+  mutate(TP = grepl("ups", peptide))
+
+vpScr_KD <-
+  resScr_KD %>%
+  ggplot(aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point(aes(colour = TP)) +
+  geom_vline(xintercept = c(-1, 1)) +
+  geom_hline(yintercept = -log10(0.1)) +
+  scale_color_manual(values = c("black","red"))
+
+ggplotly(vpScr_KD)
+
+dscrkd <- resScr_KD %>% filter(resScr_KD$adj.P.Val<0.1)
+dscrkd$peptide <- as.numeric(dscrkd$peptide)
+dscrkd <- left_join(dscrkd,ann, by = c("peptide"))
+resScr_KD$peptide <- as.numeric(resScr_KD$peptide)
+resScr_KD <- left_join(resScr_KD,ann, by = c("peptide"))
+
+res <- dscrkd$peptide
+cdatascrkd <- rowData(qf749[[3]])[res,]
+cdatascrkd$Master.Protein.Accessions
+
+dscrkd$peptide <- as.numeric(dscrkd$peptide)
+dscrkd <- left_join(dscrkd,ann, by = c("peptide"))
+
+# KD KD SBI
+
+resKD_KDSBI <-
+  topTable(fit.eb, coef = "KD_KDSBI", number = Inf) %>%
+  rownames_to_column("peptide") %>%
+  as_tibble()
+
+vpKD_KDSBI <-
+  resKD_KDSBI %>%
+  ggplot(aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point() +
+  geom_vline(xintercept = c(-1, 1)) +
+  geom_hline(yintercept = -log10(0.1)) +
+  scale_color_manual(values = c("black","red"))
+
+ggplotly(vpKD_KDSBI)

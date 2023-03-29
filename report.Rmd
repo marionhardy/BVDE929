@@ -13,6 +13,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
+knitr::opts_chunk$set(fig.width=10, fig.height=15) 
 
 library(tidyverse)
 library(readxl)
@@ -21,6 +22,9 @@ library(readxl)
 
 
 ```{r data loading, include=FALSE}
+
+library(tidyverse)
+library(readxl)
 
 data = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PeptideGroups")
 
@@ -69,7 +73,7 @@ colnames(data)[10:13] = c("F1_H2O2","F1_ctrl","F2_H2O2","F2_ctrl")
 # Filter out peptides which appear in <4 conditions
 
 cols = sapply(data[14:29], grepl, pattern = "Not.*{2,}")
-data = data[rowSums(cols) >= 4, ]
+data = data[rowSums(cols) >= 3, ]
 
 dim(data)
 
@@ -128,6 +132,8 @@ ldata =
   pivot_longer(c(10:13),
                names_to = "Treatment",
                values_to = "Abundance")
+
+table(ldata$Treatment, ldata$state)
 
 ldata %>% 
   ggplot(aes(x = Treatment, 
@@ -214,89 +220,38 @@ lall %>%
 
 ```
 
-## Improved filtering of oxidized peptides in H2O2 and non oxidized equivalent in control
 
-```{r, echo=TRUE}
 
-com_pep = lall %>% 
-  filter(state == "Not oxidated" & Treatment %in% c("F1_ctrl","F2_ctrl") |
-           state == "Oxidated" & Treatment %in% c("F1_H2O2","F2_H2O2")) %>% 
+```{r}
+
+oxrows = lall %>% filter(state == "Oxidated", Treatment %in% c("F1_H2O2", "F2_H2O2")) %>% 
   select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
   drop_na(Abundance)
 
-table(com_pep$state, com_pep$Treatment)
-
-# I have the peptides oxidated in H2O2 and the peptides unoxidated in ctrl
-
-oxrows = com_pep %>% filter(state == "Oxidated")
-unoxrows = com_pep %>% filter(state == "Not oxidated")
-
-targetpep = inner_join(oxrows,unoxrows, by = c("Annotated Sequence"),
-                  suffix = c("_H2O2", "_ctrl"))
-
-finalpep = targetpep$`Annotated Sequence`
+unoxrows = lall %>% filter(state == "Not oxidated", Treatment %in% c("F1_ctrl", "F2_ctrl")) %>% 
+  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
+  drop_na(Abundance)
 
 ```
-
-Now that I have the peptides which appear oxidized in the H2O2 treatment and unoxidized in the ctrl treatment, I can re-do the previous graphical analyses but with trust for the populations I'm comparing.
 
 
 ```{r}
 
+targetpep = inner_join(oxrows, unoxrows, by = c("Annotated Sequence"), suffix = c("_H2O2", "_ctrl"))
+
+
 lall %>% 
-  filter(`Annotated Sequence` %in% finalpep) %>% 
-  ggplot(aes(x = Abundance,
+  drop_na(Abundance) %>% 
+  filter(`Annotated Sequence`%in% targetpep$`Annotated Sequence`) %>% 
+  head(250) %>% 
+  ggplot(aes(x = `Annotated Sequence`,
+             y = Retention_time,
              color = state, fill = state))+
-  geom_histogram(alpha = 0.7, binwidth = 1)+
-  theme_bw()+
-    facet_wrap(~Treatment, scales = 'free_y')+
-  geom_vline(xintercept = 200, linetype = "dashed")
-
-
-lall %>% 
-  filter(`Annotated Sequence` %in% finalpep) %>% 
-  ggplot(aes(x = state, 
-             y = Retention_time,
-             color = state))+
-  geom_violin()+
-  geom_boxplot()+
-  theme_bw()+
-  facet_wrap(.~Treatment)
-
-```
-
-```{r, fig.height=7, fig.width=10}
-
-lall %>% 
-  filter(`Annotated Sequence` %in% finalpep) %>% 
-  head(700) %>% 
-  ggplot(aes(x = `Annotated Sequence`, 
-             y = Retention_time,
-             color = state))+
-  geom_point(size = 1, position = position_dodge(width = 1))+
-  theme_bw()+
+  geom_point(position=position_dodge(width = 1))+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-```
-
-
-## Oxidated peptides enriched in the H2O2 treatment
-
-```{r}
-# Drop peptides with similar retention times
-# Keep peptides with abundance H2O2 > ctrl
-
-
-
-
-
 
 ```
-
-
-
-
-
 
 
 
