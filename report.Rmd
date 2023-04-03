@@ -95,11 +95,11 @@ We have 7690 peptides which appeared in less than four of the samples and none t
 
 pepox = 
   data %>% 
-  filter(grepl("Oxidation", Modifications))
+  filter(grepl("xidation", Modifications)) # in case it's dioxidated
 
 pepctrl=
   data %>% 
-  filter(!grepl("Oxidation", Modifications))
+  filter(!grepl("xidation", Modifications))
 
 data =
 data %>%
@@ -168,10 +168,17 @@ ldata %>%
 data1 = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PSMs")
 
 data1 = data1[,c(5:9,27,33:38)]
+
+data1 =
+data1 %>%
+  mutate(state = case_when(
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated"))
+
 data1 = 
   data1 %>% mutate(Sequence = toupper(`Annotated Sequence`))
 
-all = left_join(data, data1, by = c("Annotated Sequence" = "Sequence"))
+all = left_join(data, data1, by = c("Annotated Sequence" = "Sequence", "state" = "state", "Treatment" = "Treatment"))
 
 ```
 
@@ -192,12 +199,14 @@ lall =
                names_to = "Treatment",
                values_to = "Abundance")
 
+
 ```
 
 I removed the violin plots because I found a way to filter more stringently the peptides per condition and state.
 
 
 ## Filtering peptides 
+### Only the oxidated in H2O2 and the matching unoxidated in ctrl
 
 Filtering peptides to keep only the peptides appearing in the two conditions and oxidated in H2O2 treatment and unoxidated in the ctrl treatment.
 
@@ -214,15 +223,13 @@ unoxrows = lall %>% filter(state == "Not oxidated", Treatment %in% c("F1_ctrl", 
 ```
 
 
-```{r}
+```{r, fig.height=8, fig.width=10}
 
 targetpep = inner_join(oxrows, unoxrows, by = c("Annotated Sequence"), suffix = c("_H2O2", "_ctrl"))
 
 
 lall %>% 
-  drop_na(Abundance) %>% 
   filter(`Annotated Sequence`%in% targetpep$`Annotated Sequence`) %>% 
-  head(250) %>% 
   ggplot(aes(x = `Annotated Sequence`,
              y = Retention_time,
              color = state, fill = state))+
@@ -231,6 +238,76 @@ lall %>%
 
 
 ```
+
+Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl.
+
+```{r}
+
+length(unique(targetpep$`Annotated Sequence`))
+
+```
+
+
+### All oxidated peptides with a match in the other condition
+
+```{r}
+
+ox = lall %>% filter(state == "Oxidated") %>% 
+  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
+  drop_na(Abundance)
+
+unox = lall %>% filter(state == "Not oxidated") %>% 
+  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
+  drop_na(Abundance)
+
+```
+
+
+```{r, fig.height=8, fig.width=10}
+
+targetpepall = inner_join(ox, unox, by = c("Annotated Sequence","Treatment"), suffix = c("_oxidated", "_unoxidated"))
+
+
+lall %>% 
+  filter(Treatment %in% c("F2_H2O2","F2_ctrl")) %>% 
+  filter(`Annotated Sequence`%in% targetpepall$`Annotated Sequence`) %>% 
+  head(150) %>% 
+  ggplot(aes(y = `Annotated Sequence`,
+             x = Retention_time,
+             color = state, 
+             fill = state,
+             shape = Treatment))+
+  geom_point(position=position_dodge(width = 1))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+```
+
+Il y a 48 peptides qui sont oxidés et non oxidés dans la condition cxtrl
+
+```{r}
+
+length(unique(targetpepall$`Annotated Sequence`))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
