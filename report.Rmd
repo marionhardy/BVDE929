@@ -136,6 +136,7 @@ ldata =
 table(ldata$Treatment, ldata$state)
 
 ldata %>% 
+  filter(Treatment %in% c("F2_ctrl", "F2_H2O2")) %>% 
   ggplot(aes(x = Treatment, 
              y = Abundance,
              color = state))+
@@ -153,7 +154,7 @@ ldata %>%
 ldata %>% 
   ggplot(aes(x = Abundance,
              color = state, fill = state))+
-  geom_histogram(alpha = 0.7, binwidth = 0.01)+
+  geom_histogram(alpha = 0.7, binwidth = 0.1)+
   theme_bw()+
     facet_wrap(~Treatment, scales = 'free_y')
 
@@ -173,12 +174,10 @@ data1 =
 data1 %>%
   mutate(state = case_when(
     grepl("xidation", Modifications) ~ "Oxidated",
-    !grepl("xidation", Modifications) ~ "Not oxidated"))
+    !grepl("xidation", Modifications) ~ "Not oxidated")) %>% 
+  mutate(Sequence = toupper(`Annotated Sequence`))
 
-data1 = 
-  data1 %>% mutate(Sequence = toupper(`Annotated Sequence`))
-
-all = left_join(data, data1, by = c("Annotated Sequence" = "Sequence", "state" = "state", "Treatment" = "Treatment"))
+all = left_join(data, data1, by = c("Annotated Sequence" = "Sequence", "state" = "state"))
 
 ```
 
@@ -234,65 +233,34 @@ lall %>%
              y = Retention_time,
              color = state, fill = state))+
   geom_point(position=position_dodge(width = 1))+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  facet_wrap(.~Treatment)
 
 ```
 
-Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl.
+Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl mais on ne sait pas à quelle abondance ils sont! Il faut donc aller checker leur delta d'abondance et garder ceux qui sont oxidés et plus abondants en H2O2.
 
 ```{r}
 
 length(unique(targetpep$`Annotated Sequence`))
 
-```
-
-
-### All oxidated peptides with a match in the other condition
-
-```{r}
-
-ox = lall %>% filter(state == "Oxidated") %>% 
-  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
-  drop_na(Abundance)
-
-unox = lall %>% filter(state == "Not oxidated") %>% 
-  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
-  drop_na(Abundance)
-
-```
-
-
-```{r, fig.height=8, fig.width=10}
-
-targetpepall = inner_join(ox, unox, by = c("Annotated Sequence","Treatment"), suffix = c("_oxidated", "_unoxidated"))
-
+# Unsatisfying, there's a problem i think
 
 lall %>% 
-  filter(Treatment %in% c("F2_H2O2","F2_ctrl")) %>% 
-  filter(`Annotated Sequence`%in% targetpepall$`Annotated Sequence`) %>% 
-  head(150) %>% 
-  ggplot(aes(y = `Annotated Sequence`,
-             x = Retention_time,
-             color = state, 
-             fill = state,
-             shape = Treatment))+
-  geom_point(position=position_dodge(width = 1))+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  drop_na(Abundance) %>% 
+  group_by(Treatment,state) %>% 
+  summarise(mean = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`))
+
+lall %>% 
+  filter(state == "Oxidated"&Treatment == "F2_H2O2"|
+         state == "Not oxidated"&Treatment == "F2_ctrl") %>% 
+  drop_na(Abundance) %>% 
+  group_by(Treatment,state) %>% 
+  summarise(mean = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`))
+
 
 
 ```
-
-Il y a 48 peptides qui sont oxidés et non oxidés dans la condition cxtrl
-
-```{r}
-
-length(unique(targetpepall$`Annotated Sequence`))
-
-```
-
-
-
 
 
 
