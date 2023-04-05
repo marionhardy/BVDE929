@@ -104,8 +104,8 @@ pepctrl=
 data =
 data %>%
   mutate(state = case_when(
-    grepl("Oxidation", Modifications) ~ "Oxidated",
-    !grepl("Oxidation", Modifications) ~ "Not oxidated"))
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated"))
   
 
 ```
@@ -240,27 +240,7 @@ lall %>%
 
 Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl mais on ne sait pas à quelle abondance ils sont! Il faut donc aller checker leur delta d'abondance et garder ceux qui sont oxidés et plus abondants en H2O2.
 
-```{r}
 
-length(unique(targetpep$`Annotated Sequence`))
-
-# Unsatisfying, there's a problem i think
-
-lall %>% 
-  drop_na(Abundance) %>% 
-  group_by(Treatment,state) %>% 
-  summarise(mean = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`))
-
-lall %>% 
-  filter(state == "Oxidated"&Treatment == "F2_H2O2"|
-         state == "Not oxidated"&Treatment == "F2_ctrl") %>% 
-  drop_na(Abundance) %>% 
-  group_by(Treatment,state) %>% 
-  summarise(mean = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`))
-
-
-
-```
 
 
 
