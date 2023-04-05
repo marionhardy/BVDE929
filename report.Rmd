@@ -228,34 +228,17 @@ targetpep = inner_join(oxrows, unoxrows, by = c("Annotated Sequence"), suffix = 
 
 
 lall %>% 
-  filter(`Annotated Sequence`%in% targetpep$`Annotated Sequence`) %>% 
+  filter(`Annotated Sequence`%in% targetpep$`Annotated Sequence`,
+         Treatment%in%c("F2_H2O2","F2_ctrl")) %>% 
   ggplot(aes(x = `Annotated Sequence`,
              y = Retention_time,
              color = state, fill = state))+
   geom_point(position=position_dodge(width = 1))+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
-  facet_wrap(.~Treatment)
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 ```
 
 Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl mais on ne sait pas à quelle abondance ils sont! Il faut donc aller checker leur delta d'abondance et garder ceux qui sont oxidés et plus abondants en H2O2.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
