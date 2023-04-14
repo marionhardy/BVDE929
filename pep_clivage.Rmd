@@ -1,0 +1,188 @@
+---
+title: "Peptidomique_clivages"
+author: "Marion Hardy"
+date: "2023-04-13"
+output: 
+  html_document:
+    toc: true 
+    theme: spacelab 
+    highlight: monochrome
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
+
+library(tidyverse)
+library(readxl)
+
+```
+
+# Peptidomic data
+
+```{r data loading}
+
+data = read_xlsx("./data/Peptidomics36_peptides_site clivage.xlsm")
+prot = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PeptideGroups")
+
+head(data)[1:9] %>% 
+  knitr::kable()
+
+```
+
+
+data\$\`Amino acid before\` I'm guessing this is the aa before the cleavage
+data\$\`Amino acid after\` this is the aa following the cleaved sequence
+
+
+We want to select the peptides that have either an M or a C at one or both of these places.
+
+```{r, include=TRUE}
+
+data1 = 
+  data %>% 
+    filter(`Amino acid before`%in%c("M","C")|
+            `Amino acid after`%in%c("M","C"))
+
+nrow((data1))
+
+```
+
+We have 267 peptides which satisfy those conditions. 
+Now we want to keep the ones which are oxidized.
+
+```{r}
+
+pepox =
+  data1 %>% 
+    filter(!is.na(`Oxidation (M) site IDs`))
+
+pepox %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+
+```
+
+There are 15 of these peptides.
+Now we want to see if the protein they are a part of is found oxidized in H2O2 or in the ctrl conditions of the proteomics analysis Sophie did BVDE929.
+
+First, we will filter those proteomics data.
+
+```{r, include=TRUE, echo=TRUE}
+
+prot = 
+  prot %>% 
+  filter(Contaminant != "TRUE")
+
+# Reduce the number of rows to keep only the ones of interest
+
+prot = prot[,c(3:5,9,10:11,16:23,29:44)]
+colnames(prot)[11:14] = c("F1_H2O2","F1_ctrl","F2_H2O2","F2_ctrl")
+
+# Filter out peptides which appear in <4 conditions
+
+cols = sapply(prot[15:30], grepl, pattern = "Not.*{2,}")
+prot = prot[rowSums(cols) >= 3, ]
+
+# Add the "oxidated" and "not oxidated" annotations
+
+prot =
+prot %>%
+  mutate(state = case_when(
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated"))
+
+
+```
+
+Keep only the enriched in H2O2 and ctrl. 
+
+```{r, include=TRUE, echo=TRUE}
+
+prot_f =
+  prot %>% 
+  filter(`Abundance Ratio: (F1, H2O2) / (F1, Non R)` != 1 |
+           `Abundance Ratio: (F2, H2O2) / (F2, Non R)` != 1,
+         `Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`<= 0.05|
+            `Abundance Ratio Adj. P-Value: (F1, H2O2) / (F1, Non R)`<= 0.05)
+
+
+length(unique(prot_f$`Annotated Sequence`))
+
+table(prot_f$`Abundance Ratio: (F2, H2O2) / (F2, Non R)`>1)
+
+
+```
+
+I get 19 peptides/proteins significantly enriched in ctrl and 37 enriched in H2O2.
+
+
+Now, get the master protein accession from the peptidomic data and grepl to see if they appear in the prot data.
+
+```{r, include=TRUE, echo=TRUE}
+library(stringr)
+
+# pepox =
+#   pepox %>% 
+#   mutate(Uniprot = str_match(pepox$Proteins, "(^tr|sp)\\|(.*?)\\|")[,3])
+# 
+# str_match(pepox$Proteins, "^(tr|sp|\\;tr|\\;sp)\\|(.*?)\\|$")
+
+common =  
+  prot_f %>% 
+  filter(`Master Protein Accessions`%in%pepox$Uniprot)
+
+dim(common)
+
+```
+
+
+There are no proteins that were significantly enriched in H2O2 or control whose peptides can also be found to have a cystein or a methionine next to the cleave site.
+
+But, if I don't filter on the abundance ratio pval in the proteomics data, then I get 66 peptides in common:
+
+```{r}
+
+common =  
+  prot %>% 
+  filter(`Master Protein Accessions`%in%pepox$Uniprot)
+
+dim(common)
+
+common %>%
+  select(`Annotated Sequence`,Modifications, `Master Protein Accessions`, `Abundance Ratio: (F2, H2O2) / (F2, Non R)`,
+         `Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`,state) %>% 
+  knitr::kable()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

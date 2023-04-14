@@ -15,9 +15,6 @@ editor_options:
 knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
 knitr::opts_chunk$set(fig.width=10, fig.height=15) 
 
-library(tidyverse)
-library(readxl)
-
 ```
 
 
