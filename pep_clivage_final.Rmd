@@ -1,0 +1,278 @@
+---
+title: "Peptidomique_clivages_final"
+author: "Marion Hardy"
+date: "2023-04-13"
+output: 
+  html_document:
+    toc: true 
+    theme: spacelab 
+    highlight: monochrome
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
+
+library(tidyverse)
+library(readxl)
+
+```
+
+```{r data loading}
+
+data = read_xlsx("./data/Peptidomics36_peptides_site clivage.xlsm")
+prot = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PeptideGroups")
+list = read_xlsx("./data/Peptidomics36_peptides_site clivage.xlsm", sheet = "enriched_pep")
+
+```
+
+## Proteomic data
+
+First, we will filter those proteomics data.
+
+```{r, include=TRUE, echo=TRUE}
+
+prot = 
+  prot %>% 
+  filter(Contaminant != "TRUE")
+
+# Reduce the number of rows to keep only the ones of interest
+
+prot = prot[,c(3:5,9,10:11,16:23,29:44)]
+colnames(prot)[11:14] = c("F1_H2O2","F1_ctrl","F2_H2O2","F2_ctrl")
+
+# Filter out peptides which appear in <4 conditions
+
+cols = sapply(prot[15:30], grepl, pattern = "Not.*{2,}")
+prot = prot[rowSums(cols) >= 3, ]
+
+# Add the "oxidated" and "not oxidated" annotations
+
+prot =
+prot %>%
+  mutate(state = case_when(
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated"))
+
+
+```
+
+
+```{r, include=F}
+
+# If we wanted to keep only the enriched in H2O2 and ctrl. 
+prot_f =
+  prot %>% 
+  filter(`Abundance Ratio: (F1, H2O2) / (F1, Non R)` != 1 |
+           `Abundance Ratio: (F2, H2O2) / (F2, Non R)` != 1,
+         `Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`<= 0.05|
+            `Abundance Ratio Adj. P-Value: (F1, H2O2) / (F1, Non R)`<= 0.05)
+
+length(unique(prot_f$`Annotated Sequence`))
+
+table(prot_f$`Abundance Ratio: (F2, H2O2) / (F2, Non R)`>1)
+
+```
+
+# Peptidomic data
+
+Peptidomics experiment: Eluate peptides ( = epitopes) from IgG and analyze through MS.
+
+Sophie has around 140 enriched peptides in her peptidomics analysis. 
+It's based on Nathalie's Log2Fc on the peptide abundances (from the peptidomic, not the proteomic data) and is filtered on pval < 0.05. 
+
+```{r}
+head(data)[1:9] %>% 
+  knitr::kable()
+```
+
+data\$\`Amino acid before\` I'm guessing this is the aa before the cleavage
+data\$\`Amino acid after\` this is the aa following the cleaved sequence
+
+## Check the aa at Cter and/or Nter
+
+```{r, include=TRUE, echo=TRUE}
+
+list = 
+  data %>% 
+  filter(Sequence%in%list$Enriched_pep)
+
+pep = 
+  list %>% 
+    filter(`Amino acid before`%in%c("M","C")|
+            `Amino acid after`%in%c("M","C")|
+             `First amino acid`%in%c("M","C")|
+             `Last amino acid`%in%c("M","C"))
+
+nrow(pep)
+
+pep %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,`First amino acid`, `Last amino acid`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+
+```
+
+21/140 enriched peptides contain
+- M or C in Nter
+- and/or M or C in Cter
+
+Just by curiosity, how many are found to be oxidized?
+
+```{r, echo=TRUE, include=TRUE}
+
+pepox =
+  pep %>% 
+    filter(!is.na(`Oxidation (M) site IDs`))
+
+pepox %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,`First amino acid`, `Last amino acid`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+
+```
+
+Only four of these peptide is found oxidized in the peptidomics data.
+
+## Check if the proteins of those 21 peptides can be found in the proteomics data.
+
+
+```{r, include=TRUE, echo=TRUE}
+library(stringr)
+
+pep =
+  pep %>%
+  mutate(Uniprot = str_match(pep$Proteins, "(^tr|sp)\\|(.*?)\\|")[,3])
+
+common =  
+  prot %>% 
+  filter(`Master Protein Accessions`%in%pep$Uniprot)
+
+dim(common)
+
+length(unique(common$`Annotated Sequence`))
+
+length(unique(common$`Master Protein Accessions`))
+
+common %>%
+  select(`Annotated Sequence`,Modifications, `Master Protein Accessions`, `Abundance Ratio: (F2, H2O2) / (F2, Non R)`,
+         `Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`,state) %>% 
+  head(50) %>% 
+  knitr::kable()
+
+```
+
+There are 190 (200 total) unique peptides from 11/21 proteins that were significantly enriched in H2O2 or control whose peptides can also be found to have a cystein or a methionine next to the cleave site.
+
+## Which are those proteins?
+
+```{r}
+
+uni_pep = unique(common$`Master Protein Accessions`)
+
+pep %>%
+  filter(Uniprot%in%uni_pep) %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,`First amino acid`, `Last amino acid`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+
+```
+
+
+## In which state are they found?
+
+```{r, echo=TRUE, include=TRUE}
+
+table(common$state)
+
+```
+
+## In which condition are they found?
+
+```{r, echo=TRUE, include=TRUE}
+
+table(common$state, common$`Abundance Ratio: (F2, H2O2) / (F2, Non R)`>1)
+
+```
+
+- 83 non oxidated enriched in control condition
+- 9 oxidated encriched in control condition
+- 54 non oxidated found in H2O2
+- 17 oxidated found in H2O2
+
+
+## To which oxidated protein correspond those oxidated peptides found in the proteomics data
+
+```{r, include=TRUE}
+
+H2O2enriched = 
+common %>% 
+  filter(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`>1,
+         state == "Oxidated") %>% 
+  select(`Master Protein Accessions`)
+
+ctrlenriched = 
+common %>% 
+  filter(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`<1,
+         state == "Oxidated") %>% 
+  select(`Master Protein Accessions`)
+
+uni_pepH2O2 = unique(H2O2enriched$`Master Protein Accessions`)
+uni_pepctrl = unique(ctrlenriched$`Master Protein Accessions`)
+
+
+```
+
+### Oxidated in H2O2
+
+```{r}
+pep %>%
+  filter(Uniprot%in%uni_pepH2O2) %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,`First amino acid`, `Last amino acid`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+```
+
+### Oxidated in control condition
+
+```{r}
+pep %>%
+  filter(Uniprot%in%uni_pepctrl) %>% 
+  select(Sequence, `Amino acid before`,`Amino acid after`,`First amino acid`, `Last amino acid`,Proteins, `Oxidation (M) site IDs`) %>% 
+  knitr::kable()
+```
+
+## Taking a look at those peptides in the proteomics data:
+
+### Oxidated in H2O2
+
+```{r}
+
+aa =
+  pep %>%
+    filter(Uniprot%in%uni_pepH2O2)
+
+prot %>% 
+  filter(`Master Protein Accessions`%in% aa$Uniprot,
+         !is.na(`Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`)) %>% 
+  group_by(`Master Protein Accessions`, state) %>% 
+  summarise(`Master Protein Accessions`, state, meanH2O2_ctrl = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`)) %>% 
+  distinct() %>% 
+  knitr::kable()
+
+```
+
+### Oxidated in ctrl
+
+```{r}
+bb =
+  pep %>%
+    filter(Uniprot%in%uni_pepctrl)
+
+prot %>% 
+  filter(`Master Protein Accessions`%in% bb$Uniprot,
+         !is.na(`Abundance Ratio Adj. P-Value: (F2, H2O2) / (F2, Non R)`)) %>% 
+  group_by(`Master Protein Accessions`, state) %>% 
+  summarise(`Master Protein Accessions`, state, meanH2O2_ctrl = mean(`Abundance Ratio: (F2, H2O2) / (F2, Non R)`)) %>% 
+  distinct() %>% 
+  knitr::kable()
+
+```
+
