@@ -1,0 +1,241 @@
+---
+title: "BVDE929_report"
+author: "Marion Hardy"
+date: "2023-03-16"
+output: 
+  html_document:
+    toc: true 
+    theme: spacelab 
+    highlight: monochrome
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
+knitr::opts_chunk$set(fig.width=10, fig.height=15) 
+
+```
+
+
+```{r data loading, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+
+data = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PeptideGroups")
+
+```
+
+
+# Introduction
+
+Cells were treated with H2O2 (or ctrl) and proteins were digested, tagged with TMT and loaded onto the LC-MS/MS.
+Oxidized methionins were conserved.
+
+We want to know if oxidization might have happened at ionization, in which case the retention time for a non-oxidized
+peptide should be the same as the one for an oxidized peptide.
+
+We have 3 excel files
+
+- PSMs
+- PeptideGroups
+- (ProteingGroups)
+
+# Data clean up
+
+```{r, echo = T}
+
+# Filtering out contaminants
+
+dim(data)
+
+data = 
+  data %>% 
+  filter(Contaminant != "TRUE")
+
+dim(data)
+
+```
+
+
+```{r, echo=TRUE}
+
+# Reduce the number of rows to keep only the ones of interest
+
+data = data[,c(3:5,9,10,16:23,29:44)]
+colnames(data)
+colnames(data)[10:13] = c("F1_H2O2","F1_ctrl","F2_H2O2","F2_ctrl")
+
+# Filter out peptides which appear in <4 conditions
+
+cols = sapply(data[14:29], grepl, pattern = "Not.*{2,}")
+data = data[rowSums(cols) >= 3, ]
+
+dim(data)
+
+# Filter out PSM <1
+
+data =
+  data %>% 
+  filter(!`# PSMs` < 1)
+
+```
+
+We have 7690 peptides which appeared in less than four of the samples and none that had PSM = 0.
+
+# Analysis
+
+## Frequency of peptide oxidation
+
+```{r}
+
+pepox = 
+  data %>% 
+  filter(grepl("xidation", Modifications)) # in case it's dioxidated
+
+pepctrl=
+  data %>% 
+  filter(!grepl("xidation", Modifications))
+
+data =
+data %>%
+  mutate(state = case_when(
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated"))
+  
+
+```
+
+We have 1541 peptides identified as oxidated and 18 545 as not oxidated.
+
+```{r, echo=TRUE}
+
+dim(pepox)
+head(pepox)
+
+dim(pepctrl)
+head(pepctrl)
+
+```
+
+
+```{r, fig.height=4, fig.width=8}
+
+# Add annotations for which samples is which conditions
+
+ldata =
+  data %>% 
+  pivot_longer(c(10:13),
+               names_to = "Treatment",
+               values_to = "Abundance")
+
+table(ldata$Treatment, ldata$state)
+
+ldata %>% 
+  filter(Treatment %in% c("F2_ctrl", "F2_H2O2")) %>% 
+  ggplot(aes(x = Treatment, 
+             y = Abundance,
+             color = state))+
+  geom_violin(position = position_dodge(width = 1))+
+  geom_boxplot(position = position_dodge(width = 1))+
+  theme_bw()
+
+ldata %>% 
+  ggplot(aes(x = Abundance,
+             color = state, fill = state))+
+  geom_histogram(alpha = 0.7, binwidth = 5)+
+  theme_bw()+
+    facet_wrap(~Treatment)
+
+ldata %>% 
+  ggplot(aes(x = Abundance,
+             color = state, fill = state))+
+  geom_histogram(alpha = 0.7, binwidth = 0.1)+
+  theme_bw()+
+    facet_wrap(~Treatment, scales = 'free_y')
+
+
+```
+
+
+# Match the retention times to the right peptides
+
+```{r}
+
+data1 = read_xlsx("./data/BVDE_929_data.xlsx", sheet = "PSMs")
+
+data1 = data1[,c(5:9,27,33:38)]
+
+data1 =
+data1 %>%
+  mutate(state = case_when(
+    grepl("xidation", Modifications) ~ "Oxidated",
+    !grepl("xidation", Modifications) ~ "Not oxidated")) %>% 
+  mutate(Sequence = toupper(`Annotated Sequence`))
+
+all = left_join(data, data1, by = c("Annotated Sequence" = "Sequence", "state" = "state"))
+
+```
+
+I merged the PSM file which contains the retention times with the PeptideGroup data I filtered before.
+Then I removed the unduplicated peptide sequences to be rid of any peptide not oxidized and unoxidized.
+
+However, this filtering is not the best since it would keep two peptides oxidized in different places. But the idea is that the overall population comparison will compare peptides that were oxidized to peptide not oxidized.
+
+```{r, fig.height=4, fig.width=8, echo=TRUE}
+
+colnames(all)[36] = "Retention_time"
+table(duplicated(all$`Annotated Sequence`))
+all = all[duplicated(all$`Annotated Sequence`),]
+
+lall =
+  all %>% 
+  pivot_longer(c(10:13),
+               names_to = "Treatment",
+               values_to = "Abundance")
+
+
+```
+
+I removed the violin plots because I found a way to filter more stringently the peptides per condition and state.
+
+
+## Filtering peptides 
+### Only the oxidated in H2O2 and the matching unoxidated in ctrl
+
+Filtering peptides to keep only the peptides appearing in the two conditions and oxidated in H2O2 treatment and unoxidated in the ctrl treatment.
+
+```{r}
+
+oxrows = lall %>% filter(state == "Oxidated", Treatment %in% c("F1_H2O2", "F2_H2O2")) %>% 
+  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
+  drop_na(Abundance)
+
+unoxrows = lall %>% filter(state == "Not oxidated", Treatment %in% c("F1_ctrl", "F2_ctrl")) %>% 
+  select(`Annotated Sequence`, Modifications.x, Abundance, state, Treatment, Retention_time) %>% 
+  drop_na(Abundance)
+
+```
+
+
+```{r, fig.height=8, fig.width=10}
+
+targetpep = inner_join(oxrows, unoxrows, by = c("Annotated Sequence"), suffix = c("_H2O2", "_ctrl"))
+
+
+lall %>% 
+  filter(`Annotated Sequence`%in% targetpep$`Annotated Sequence`,
+         Treatment%in%c("F2_H2O2","F2_ctrl")) %>% 
+  ggplot(aes(x = `Annotated Sequence`,
+             y = Retention_time,
+             color = state, fill = state))+
+  geom_point(position=position_dodge(width = 1))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+Il y a 49 peptides qui sont oxidés en H2O2 et non oxidés en ctrl mais on ne sait pas à quelle abondance ils sont! Il faut donc aller checker leur delta d'abondance et garder ceux qui sont oxidés et plus abondants en H2O2.
+
+
+
